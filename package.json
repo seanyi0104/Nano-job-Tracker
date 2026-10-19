@@ -11,8 +11,8 @@
     "seed": "tsx prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "engine": "powershell -NoProfile -ExecutionPolicy Bypass -File agent/scripts/start-engine.ps1",
-    "install-skill": "powershell -NoProfile -ExecutionPolicy Bypass -File agent/scripts/install-skill.ps1"
+    "engine": "node scripts/engine.mjs",
+    "install-skill": "node scripts/install-skill.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
