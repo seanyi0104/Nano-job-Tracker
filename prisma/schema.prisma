@@ -1,0 +1,271 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── Auth.js standard models ─────────────────────────────
+
+model User {
+  id            String        @id @default(cuid())
+  name          String?
+  email         String?       @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  emails        Email[]
+  applications  Application[]
+  syncState     SyncState?
+  cvProfile     CvProfile?
+  jdAnalyses    JdAnalysis[]
+  companyAliases CompanyAlias[]
+  llmUsage      LlmUsage[]
+}
+
+/**
+ * What each model call actually consumed.
+ *
+ * Added after an estimate under-reported a real run by 3x and there was no way
+ * to tell where the money went — the provider's console reports a monthly
+ * total and nothing per-request, and the app recorded nothing at all. Guessing
+ * from character counts is what produced the wrong number in the first place:
+ * CJK text costs several times more per character than English, so any inbox
+ * with Chinese mail breaks a character-based model.
+ *
+ * The four token columns are copied verbatim from the API response rather than
+ * derived, so the arithmetic can be re-checked against a bill later, and a
+ * change in pricing only needs the rate table updated to re-cost history.
+ */
+model LlmUsage {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  at            DateTime @default(now())
+  // "classify" | "extract" | "cv_parse" | "cv_update" | "prep"
+  operation     String
+  model         String
+  // How many emails this call covered — classification batches a dozen at a
+  // time, so per-call cost alone cannot produce a per-email figure.
+  items         Int      @default(1)
+  inputTokens   Int
+  outputTokens  Int
+  cacheReadTokens  Int   @default(0)
+  cacheWriteTokens Int   @default(0)
+  // Priced at the moment of the call, so past rows survive a price change.
+  costUsd       Float
+
+  @@index([userId, at])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ── Domain models ───────────────────────────────────────
+
+model SyncState {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // End of the tracking window, and the incremental watermark. Reset sets it
+  // to the END OF THE CHOSEN RANGE, not to now — otherwise the Update that
+  // follows a Reset finds nothing and the user cannot tell it works.
+  lastSyncedAt    DateTime?
+  // Start of the tracking window. Without it the product can only say "last
+  // synced at X" and never "I am tracking March onwards", which leaves the
+  // user guessing which mail the verdicts were even drawn from. Set by Reset.
+  windowStart     DateTime?
+  // Which button last moved the window ("reset" | "update" | "rejudge"), so
+  // the dashboard can say what the timestamp next to it actually means.
+  lastAction      String?
+  status          String    @default("idle")
+  progressFetched Int       @default(0)
+  progressTotal   Int       @default(0)
+  progressPhase   String?
+  lastError       String?
+  updatedAt       DateTime  @updatedAt
+}
+
+/**
+ * User-confirmed "these two company names are the same employer".
+ *
+ * Deliberately NOT inferred. Normalisation already strips brackets and region
+ * suffixes, but "PricewaterhouseCoopers" vs "PwC" is an abbreviation, and
+ * generalising that would merge Google with Google Cloud. The judgement needs
+ * knowledge the system does not have, so the user supplies it — once per pair,
+ * a handful of times in a job search.
+ *
+ * Stored per user rather than in code: an alias table that shipped in the
+ * repository would encode one person's employers as everyone's defaults.
+ */
+model CompanyAlias {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Normalised form that should be folded away.
+  aliasNormalized String
+  // Normalised form it folds into — the name the card keeps.
+  canonicalNormalized String
+  // Display name to show for the merged card.
+  canonicalLabel String
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, aliasNormalized])
+  @@index([userId, canonicalNormalized])
+}
+
+model Email {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gmailId        String
+  threadId       String
+  fromAddress    String
+  subject        String
+  snippet        String
+  internalDate   DateTime
+  bodyText       String?
+  isJobRelated   Boolean?
+  emailType      String?
+  classifiedAt   DateTime?
+  // Fingerprint of the CV-derived profile this verdict was reached under. The
+  // CV is edited constantly, so "is this a job email" is not a fixed question —
+  // when the profile moves, past verdicts silently go stale. Recording it is
+  // what lets the UI say so instead of pretending the answer is still current.
+  profileHash    String?
+  extractedAt    DateTime?
+  extractionJson String?
+  applicationId  String?
+  application    Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, gmailId])
+  @@index([userId, internalDate])
+}
+
+model Application {
+  id                String              @id @default(cuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company           String
+  companyNormalized String
+  role              String
+  roleNormalized    String
+  status            String              @default("APPLIED")
+  statusIsManual    Boolean             @default(false)
+  appliedDate       DateTime?
+  lastEmailDate     DateTime?
+  emails            Email[]
+  prep              CompanyPrep?
+  questions         BehavioralQuestion[]
+  analyses          JdAnalysis[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([userId, companyNormalized, roleNormalized])
+}
+
+model CompanyPrep {
+  id                  String      @id @default(cuid())
+  applicationId       String      @unique
+  application         Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  snapshotJson        String?
+  interviewPrepJson   String?
+  snapshotGeneratedAt DateTime?
+  prepGeneratedAt     DateTime?
+}
+
+// ── Nano-job-Tracker: nanobot analysis engine ───────────
+//
+// The canonical copy of the CV lives in nanobot's long-term memory
+// (workspace/memory/CV.md). CvProfile is a local mirror so the editor
+// page can render instantly without a round trip to the agent.
+
+model CvProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Canonical CV text — rendered from structuredJson when the form is used,
+  // or the raw paste/upload when it is not. This is what goes to nanobot.
+  content   String
+  // Field-level CV the form edits. A CV changes constantly; editing one
+  // bullet should not mean rewriting a wall of text.
+  structuredJson String?
+  // Where the current fields came from, so the page can say which document is
+  // loaded instead of leaving the user guessing whether an upload took.
+  sourceName String?
+  sourceAt   DateTime?
+  summaryJson String?
+  syncedAt  DateTime?
+  syncError String?
+  updatedAt DateTime @updatedAt
+}
+
+model JdAnalysis {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  company       String
+  role          String
+  jdText        String
+  rating        String
+  matchScore    Int
+  verdict       String
+  analysisJson  String
+  model         String
+  createdAt     DateTime     @default(now())
+  // Set when the user has hand-corrected the agent's output, so the UI can
+  // show that this is no longer purely what the model produced.
+  editedAt      DateTime?
+
+  @@index([userId, createdAt])
+  @@index([applicationId])
+}
+
+model BehavioralQuestion {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  question      String
+  rationale     String?
+  userAnswer    String?
+  sortOrder     Int         @default(0)
+  updatedAt     DateTime    @updatedAt
+
+  @@index([applicationId])
+}

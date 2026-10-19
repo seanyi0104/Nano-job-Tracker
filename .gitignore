@@ -1,0 +1,64 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (.env is committed — holds only the non-secret DATABASE_URL;
+# secrets go in .env.local)
+.env.local
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# prisma
+/src/generated/prisma
+prisma/dev.db
+prisma/dev.db-journal
+
+# Personal documents — never publish.
+# Contains the author's real name, ability self-assessment, job-search
+# strategy, the list of companies actually applied to, and interview
+# answers including "what I cannot answer yet". Publishing any of it
+# under the author's own portfolio repo would actively harm the job search.
+docs/private/
+
+# 本机配置（预览服务器等）
+.claude/
+
+# 8 月版技术讲解：内容过时，且含作者个人细节。整理后再公开
+docs/EXPLAINER.md
+
+# prisma generate 失败时留下的引擎临时文件
+*.dll.node.tmp*

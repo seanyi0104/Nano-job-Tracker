@@ -1,0 +1,32 @@
+{
+  "id": "msg002",
+  "threadId": "thread002",
+  "internalDate": "1721318400000",
+  "snippet": "Congratulations! You have been selected for an interview.",
+  "payload": {
+    "mimeType": "multipart/alternative",
+    "headers": [
+      { "name": "From", "value": "Google Recruiting <recruiting@google.com>" },
+      { "name": "Subject", "value": "Interview Invitation - Software Engineer" }
+    ],
+    "body": { "size": 0 },
+    "parts": [
+      {
+        "mimeType": "text/plain",
+        "headers": [],
+        "body": {
+          "size": 80,
+          "data": "Q29uZ3JhdHVsYXRpb25zISBZb3UgaGF2ZSBiZWVuIHNlbGVjdGVkIGZvciBhbiBpbnRlcnZpZXcgYXQgR29vZ2xlLiBQbGVhc2UgcmVwbHkgdG8gc2NoZWR1bGUu"
+        }
+      },
+      {
+        "mimeType": "text/html",
+        "headers": [],
+        "body": {
+          "size": 200,
+          "data": "PGh0bWw-PGJvZHk-PHA-Q29uZ3JhdHVsYXRpb25zITwvcD48cD5Zb3UgaGF2ZSBiZWVuIHNlbGVjdGVkIGZvciBhbiBpbnRlcnZpZXcgYXQgR29vZ2xlLjwvcD48cD5QbGVhc2UgcmVwbHkgdG8gc2NoZWR1bGUuPC9wPjwvYm9keT48L2h0bWw-"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "msg003",
+  "threadId": "thread003",
+  "internalDate": "1721318400000",
+  "snippet": "We regret to inform you",
+  "payload": {
+    "mimeType": "text/html",
+    "headers": [
+      { "name": "From", "value": "Meta Careers <no-reply@meta.com>" },
+      { "name": "Subject", "value": "Update on your application" }
+    ],
+    "body": {
+      "size": 150,
+      "data": "PGh0bWw-PGJvZHk-PHA-V2UgcmVncmV0IHRvIGluZm9ybSB5b3UgdGhhdCB3ZSB3aWxsIG5vdCBiZSBtb3ZpbmcgZm9yd2FyZCB3aXRoIHlvdXIgYXBwbGljYXRpb24gYXQgdGhpcyB0aW1lLjwvcD48cD5XZSBlbmNvdXJhZ2UgeW91IHRvIGFwcGx5IGFnYWluIGluIHRoZSBmdXR1cmUuPC9wPjwvYm9keT48L2h0bWw-"
+    }
+  }
+}

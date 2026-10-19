@@ -1,0 +1,17 @@
+{
+  "id": "msg001",
+  "threadId": "thread001",
+  "internalDate": "1721318400000",
+  "snippet": "Thank you for applying to Amazon",
+  "payload": {
+    "mimeType": "text/plain",
+    "headers": [
+      { "name": "From", "value": "Amazon Jobs <jobs@amazon.com>" },
+      { "name": "Subject", "value": "Application Confirmation - SDE Intern" }
+    ],
+    "body": {
+      "size": 150,
+      "data": "VGhhbmsgeW91IGZvciBhcHBseWluZyBmb3IgU29mdHdhcmUgRGV2ZWxvcG1lbnQgRW5naW5lZXIgSW50ZXJuIGF0IEFtYXpvbi4gV2Ugd2lsbCByZXZpZXcgeW91ciBhcHBsaWNhdGlvbiBhbmQgZ2V0IGJhY2sgdG8geW91IHNvb24u"
+    }
+  }
+}

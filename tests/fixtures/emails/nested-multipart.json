@@ -1,0 +1,47 @@
+{
+  "id": "msg004",
+  "threadId": "thread004",
+  "internalDate": "1721318400000",
+  "snippet": "Your online assessment is ready",
+  "payload": {
+    "mimeType": "multipart/mixed",
+    "headers": [
+      { "name": "From", "value": "HackerRank <no-reply@hackerrank.com>" },
+      { "name": "Subject", "value": "Online Assessment from Stripe" }
+    ],
+    "body": { "size": 0 },
+    "parts": [
+      {
+        "mimeType": "multipart/alternative",
+        "headers": [],
+        "body": { "size": 0 },
+        "parts": [
+          {
+            "mimeType": "text/plain",
+            "headers": [],
+            "body": {
+              "size": 70,
+              "data": "WW91ciBvbmxpbmUgYXNzZXNzbWVudCBmb3IgU3RyaXBlIGlzIHJlYWR5LiBQbGVhc2UgY29tcGxldGUgaXQgd2l0aGluIDcyIGhvdXJzLg"
+            }
+          },
+          {
+            "mimeType": "text/html",
+            "headers": [],
+            "body": {
+              "size": 200,
+              "data": "PGh0bWw-PGJvZHk-PHA-WW91ciBvbmxpbmUgYXNzZXNzbWVudCBmb3IgU3RyaXBlIGlzIHJlYWR5LjwvcD48L2JvZHk-PC9odG1sPg"
+            }
+          }
+        ]
+      },
+      {
+        "mimeType": "application/pdf",
+        "headers": [],
+        "body": {
+          "size": 5000,
+          "attachmentId": "att001"
+        }
+      }
+    ]
+  }
+}
