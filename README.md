@@ -24,6 +24,9 @@
 [HKUDS/nanobot](https://github.com/HKUDS/nanobot) 一行源码没改，全部行为由
 `agent/skills/job-analysis/SKILL.md` 定义。来源与许可见文末。
 
+> **怎么用、三个按钮各是什么逻辑**，看写给使用者的 [使用指南](docs/GUIDE.md)。
+> 本页讲怎么装、怎么跑、为什么这么设计。
+
 ---
 
 ## 目录
@@ -40,11 +43,10 @@ nano-job-tracker/
 │   ├── app/cv/               · 简历录入页
 │   └── lib/llm/              · 原有 Claude 链路（邮件分类/抽取/面试准备）
 ├── prisma/                   · schema + migrations + dev.db
-└── agent/
-    ├── skills/job-analysis/SKILL.md   ← 技能定义（源）
-    └── scripts/
-        ├── install-skill.ps1          · 同步技能到 ~/.nanobot/workspace
-        └── start-engine.ps1           · 启动 nanobot API 服务
+├── agent/skills/job-analysis/SKILL.md   ← 技能定义（源）
+└── scripts/
+    ├── engine.mjs           · npm run engine：找到并启动 nanobot（跨平台）
+    └── install-skill.mjs    · npm run install-skill：同步技能到 ~/.nanobot/workspace
 ```
 
 ---
@@ -142,46 +144,64 @@ Fail    = REJECTED
 这是刻意的：如果每次都把 CV 拼进 prompt，"长期记忆"就只是个装饰词，整条链路
 退化成一次无状态的 LLM 调用。让 Agent 自己去读记忆，Memory 才是真的在工作。
 
-数据库里的 `CvProfile` 表只是编辑器的本地镜像，用于即时渲染和防止 nanobot 离线时
-丢失用户输入——它不参与分析。
+数据库里的 `CvProfile` 不参与 JD 分析，但它是**邮件分类画像的来源**：
+`src/lib/cv/profile.ts` 从这里抽 5 行（求职意向、所在地、学历、雇主、技能）。
+Save CV 先写数据库、再推给 nanobot，所以不开 nanobot 时，手填的简历照样能让
+邮件追踪按你的背景工作。
 
 ---
 
 ## 从零部署
 
-需要两个东西各跑一次配置：**nanobot 引擎**（Python）和**本应用**（Node）。
-两者独立进程，通过 `127.0.0.1:8900` 通信。
+先决定装到哪一档——不是每样都必须：
+
+| 档位 | 要准备的 | 能用的功能 |
+|---|---|---|
+| 只看看 | Node.js | 演示模式：不登录，用示例数据看完整界面（见下方「不装 Google OAuth 也能看」） |
+| 最小可用 | + Google OAuth 应用 + Anthropic key | 邮件追踪的全部功能（Update / Re-judge / Reset、卡片、面试准备）；简历手填 |
+| 完整 | + nanobot + 一个模型的 key（默认 DeepSeek） | 再加：上传简历自动解析、投前 JD 分析 |
+
+nanobot 和本应用是两个独立进程，通过 `127.0.0.1:8900` 通信。
 
 ### 前置
 
 | | 版本 | 说明 |
 |---|---|---|
 | Node.js | 20+ | 跑 Next.js |
-| Python | 3.11+ | 跑 nanobot |
-| DeepSeek API key | — | [platform.deepseek.com](https://platform.deepseek.com)，JD 分析用 |
+| Python | 3.11+ | 跑 nanobot（完整档才要） |
+| 模型 API key | — | 完整档才要。默认 DeepSeek（[platform.deepseek.com](https://platform.deepseek.com)），也可换成 nanobot 支持的其他厂商 |
 | Anthropic API key | — | [console.anthropic.com](https://console.anthropic.com)，邮件分类/抽取用 |
 | Google Cloud 项目 | — | Gmail 只读授权 |
 
-### 第 1 步：装 nanobot 引擎
+### 第 1 步：装 nanobot 引擎（完整档才要）
 
-把 nanobot clone 到**本项目旁边**（同一个父目录下），`npm run engine` 会按内容自动找到它；
-放在别处的话，启动前设环境变量 `NANOBOT_SOURCE` 指向它。
+**nanobot 是什么**：港大 HKUDS 开源的 Agent 框架。它在你电脑上跑一个后台程序，负责记住你的简历、
+分析 JD。它本身**不是模型**，干活时调用云端模型的 API——默认 DeepSeek，也支持 OpenAI、Anthropic、
+通义、智谱、Kimi、OpenRouter 等约 40 家，或 Ollama / LM Studio 这类本地模型。本项目没改它一行代码，
+只给它一份技能文件（`agent/skills/job-analysis/SKILL.md`）。
+
+两种装法，选一种：
+
+**A. 用 pip 装（推荐）**
+
+```bash
+pip install "nanobot-ai[api]"
+nanobot onboard
+```
+
+**B. 从源码装**：clone 到**本项目旁边**（同一个父目录），`npm run engine` 会自动找到它；
+放在别处就设环境变量 `NANOBOT_SOURCE` 指向它。
 
 ```bash
 git clone https://github.com/HKUDS/nanobot
 cd nanobot
 python -m venv .venv
-```
-
-Windows 用 `.\.venv\Scripts\python.exe`，macOS/Linux 用 `.venv/bin/python`：
-
-```bash
-.venv/bin/python -m pip install -e ".[api]"
+.venv/bin/python -m pip install -e ".[api]"     # Windows：.venv\Scripts\python.exe
 .venv/bin/python -m nanobot onboard
 ```
 
-`onboard` 会引导你填 provider。选 **deepseek**，填 API key。之后确认
-`~/.nanobot/config.json` 里有：
+`onboard` 会让你选模型厂商、填 API key。之后确认 `~/.nanobot/config.json` 里 API 端口是 8900
+（换了端口，就同时改本应用的 `NANOBOT_API_URL`）：
 
 ```json
 {
@@ -199,8 +219,8 @@ npm install
 cp .env.example .env.local
 ```
 
-填 `.env.local`（每一项的含义见下方**环境变量**）。然后装技能定义——
-这一步不能跳，Agent 的全部行为都由它定义：
+填 `.env.local`（每一项的含义见下方**环境变量**）。用 nanobot 的话，再装技能定义——
+Agent 的全部行为都由它定义，这一步不能跳：
 
 ```bash
 npm run install-skill
@@ -220,9 +240,12 @@ npm run install-skill
      Google 签发的 refresh token **7 天后强制失效**，邮件同步每周都会断。
      未验证的应用在生产状态下依然可用（授权时多一个警告页，上限 100 用户）。
 
+> **为什么要自己建**：这个应用跑在你自己的电脑上，Google 授权必须发给你自己的 OAuth 应用。
+> 用别人的不行——对方的密钥会外泄，而且未经验证的应用最多只能给 100 个人用。
+
 ### 第 4 步：跑起来
 
-两个终端，都要开着：
+完整档开两个终端（最小可用只要第二个）：
 
 ```bash
 npm run engine
@@ -235,7 +258,10 @@ npm run dev
 `npm run dev` 会自动执行 `prisma migrate deploy && prisma generate && seed`，
 数据库不用手动初始化。打开 http://localhost:3000。
 
-> 引擎必须先起。前端右上角的 `nanobot online/offline` 灯就是探活——灰的说明
+`npm run engine` 依次找：`NANOBOT_SOURCE` → 项目旁边的源码目录 → PATH 上的 `nanobot`。
+找不到会告诉你怎么装；`npm run engine -- --dry-run` 只报告找到的是哪个，不启动。
+
+> 用 nanobot 的话引擎要先起。前端右上角的 `nanobot online/offline` 灯就是探活——灰的说明
 > 引擎没通，JD 分析会直接报 OFFLINE 而不是给你一个假结果。
 
 ### 第 5 步：走一遍闭环
@@ -293,23 +319,22 @@ ANTHROPIC_API_KEY="..."     # 邮件分类/抽取/面试准备用
 
 NANOBOT_API_URL="http://127.0.0.1:8900"
 NANOBOT_API_KEY=""          # 仅当 ~/.nanobot/config.json 配了 api.apiKey
-NANOBOT_MODEL="deepseek-v4-flash"
+NANOBOT_MODEL="deepseek-v4-flash" # 只是记在每条 JD 分析上的标签；真正用哪个模型在 nanobot 配置里改
 NANOBOT_TIMEOUT_MS="180000" # Agent 要读文件再推理，比裸调用慢
 ```
 
-DeepSeek 的 key 不在这里——它在 nanobot 自己的 `~/.nanobot/config.json` 里，
-前端从不接触 DeepSeek 凭证。
+模型的 key（默认 DeepSeek）不在这里——它在 nanobot 自己的 `~/.nanobot/config.json` 里，
+前端从不接触这把 key。
 
 ---
 
 ## 已知限制
 
-- **`npm run engine` / `npm run install-skill` 目前只支持 Windows**（PowerShell 脚本）。
-  mac / Linux 先手动代替：在 nanobot 目录里跑 `.venv/bin/python -m nanobot serve`；装技能用
-  `mkdir -p ~/.nanobot/workspace/skills/job-analysis && cp agent/skills/job-analysis/SKILL.md ~/.nanobot/workspace/skills/job-analysis/`。
+- **只支持 Gmail**。程序直接调 Gmail API，Outlook、QQ 邮箱、163 等现在都不行。
+  零代码的办法：在那个邮箱里设置「自动转发到你的 Gmail」，求职邮件就会进到这里。
 - **Google OAuth 应用未经 Google 验证**：每次授权都会多一个「此应用未经 Google 验证」警告页，
   上限 100 个用户。这是自用 / 小范围使用的正常状态。
-- 只在 Windows + Node 22 上完整跑过。
+- **引擎脚本在 Windows 上实测过**；macOS / Linux 走同一套 Node 脚本，按代码逻辑可用，但还没在真机上跑过。
 
 ## 常见问题
 
@@ -323,10 +348,10 @@ DeepSeek 的 key 不在这里——它在 nanobot 自己的 `~/.nanobot/config.j
 ## 你的数据去了哪里
 
 - **全部留在本机**：邮件、卡片、简历、Google 令牌都存在 `prisma/dev.db`（已 gitignore）；
-  API key 在 `.env.local`（已 gitignore）；DeepSeek 的 key 在 `~/.nanobot/config.json`。
+  API key 在 `.env.local`（已 gitignore）；模型的 key（默认 DeepSeek）在 `~/.nanobot/config.json`。
 - **会发给 Anthropic 的**：分类时每封邮件的发件人、标题和约 200 字预览；判为求职邮件的，
   抽取时再发正文前 6,000 字。
-- **会发给 DeepSeek（经 nanobot）的**：你的简历和你粘贴的 JD。
+- **会发给你在 nanobot 里选的模型厂商（默认 DeepSeek）的**：你的简历和你粘贴的 JD。
 - Gmail 授权是**只读**的（`gmail.readonly`），程序不能发信、不能删信。
 
 ## 来源与许可
