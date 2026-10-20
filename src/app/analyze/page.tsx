@@ -8,6 +8,12 @@ import { JdAnalyzeForm } from "@/components/jd-analyze-form";
 import { JdAnalysisBrowser } from "@/components/jd-analysis-browser";
 import type { AnalysisRecord } from "@/components/jd-analysis-browser";
 
+// Per-user data from the local database: render on every request, never at
+// build time. Demo mode reads no cookies, so without this Next would try to
+// prerender the page, and `next build` on a fresh clone failed because the
+// database did not exist yet.
+export const dynamic = "force-dynamic";
+
 export default async function AnalyzePage() {
   const user = await getSessionUser();
   if (!user) redirect("/signin");

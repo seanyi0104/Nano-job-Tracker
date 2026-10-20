@@ -14,6 +14,12 @@ import { countStaleVerdicts } from "@/lib/cv/profile";
 import { COMPANY_STATUS_RANK } from "@/lib/types";
 import type { ApplicationStatus } from "@/lib/types";
 
+// Per-user data from the local database: render on every request, never at
+// build time. Demo mode reads no cookies, so without this Next would try to
+// prerender the page, and `next build` on a fresh clone failed because the
+// database did not exist yet.
+export const dynamic = "force-dynamic";
+
 /**
  * Four columns on screen, five statuses underneath.
  *
