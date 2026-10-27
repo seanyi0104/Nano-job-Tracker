@@ -361,3 +361,9 @@ NANOBOT_TIMEOUT_MS="180000" # Agent 要读文件再推理，比裸调用慢
 - 分析引擎是 [HKUDS/nanobot](https://github.com/HKUDS/nanobot)（MIT License，
   Copyright (c) 2025-present Xubin Ren and the nanobot contributors）。本仓库**不包含** nanobot 源码，
   只通过它的 HTTP 接口调用，并提供一份技能定义文件。
+
+## 致谢
+
+- [viviannnl/job-tracker](https://github.com/viviannnl/job-tracker)：本项目前端的原型。
+- [HKUDS/nanobot](https://github.com/HKUDS/nanobot)：投递前 CV × JD 分析的 Agent 引擎。
+- Claude（Anthropic）：参与了开发，提交记录里的 Co-Authored-By 署名即来自它。
