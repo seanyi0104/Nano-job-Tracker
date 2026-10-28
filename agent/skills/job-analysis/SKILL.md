@@ -24,16 +24,23 @@ Nano-job-Tracker 的后端分析引擎。前端 `job-tracker` 通过 OpenAI 兼�
 
 不要把简历全文塞进 `MEMORY.md` 或 `USER.md`；那两个文件只放摘要和索引。
 
+每条指令都在一个**全新的会话**里发来，对话里没有任何旧简历可参考，简历只能从
+`memory/CV.md` 读。就算你觉得自己记得，也要重新读：用户随时会改简历。
+
+`memory/CV.md` 里有一行 `> 简历版本 / CV version: <12 位十六进制>`，由
+Nano-job-Tracker 生成，用来核对你读到的是不是最新的简历。原样保留，原样引用，
+不要改写，也不要自己编一个。
+
 ---
 
 ## 指令一：`[NJT:CV_UPDATE]`
 
-正文余下部分是简历全文（纯文本或 Markdown）。
+正文余下部分是简历全文（纯文本或 Markdown），第一行是版本号行。
 
-1. 用它**整体覆盖** `memory/CV.md`（不是追加、不是合并）。
+1. 用它**整体覆盖** `memory/CV.md`（不是追加、不是合并），版本号行一字不改。
 2. 顺手在文件顶部维护一行 `> 最后更新：YYYY-MM-DD`。
 3. 若 `memory/MEMORY.md` 里还没有 CV 索引行，补上。
-4. 读一遍写入的内容，抽取一份结构化摘要。
+4. 读回刚写入的文件，抽取一份结构化摘要，并把文件里版本号行的值原样填进 `cvVersion`。
 
 返回：
 
@@ -46,7 +53,8 @@ Nano-job-Tracker 的后端分析引擎。前端 `job-tracker` 通过 OpenAI 兼�
     "skills": ["技术栈关键词，最多 12 个"],
     "highlights": ["最有说服力的 3-5 条经历，每条 30 字以内"]
   },
-  "storedAt": "memory/CV.md"
+  "storedAt": "memory/CV.md",
+  "cvVersion": "从文件里读回的版本号"
 }
 ```
 
@@ -92,8 +100,9 @@ Nano-job-Tracker 的后端分析引擎。前端 `job-tracker` 通过 OpenAI 兼�
 
 正文余下部分是一段岗位 JD 原文。
 
-1. 先读 `memory/CV.md`。**如果文件不存在或为空**，立刻返回
+1. 先读 `memory/CV.md`，每次都读。**如果文件不存在或为空**，立刻返回
    `{"ok": false, "error": "NO_CV"}`，不要编造简历内容。
+   把文件里版本号行的值原样填进返回的 `cvVersion`；文件里没有这一行就填 `null`。
 2. **信息抽取**：从 JD 里拆出公司、岗位名、硬性要求、加分项、技术关键词。
    JD 里没写公司名就填 `"未知公司"`，没写岗位名就填 `"未知岗位"`——不要猜。
 3. **推理匹配**：拿 CV 逐条比对 JD 要求。
@@ -131,13 +140,15 @@ Nano-job-Tracker 的后端分析引擎。前端 `job-tracker` 通过 OpenAI 兼�
     { "gap": "缺什么", "severity": "high", "mitigation": "具体怎么补" }
   ],
   "keywords": ["JD 里值得写进简历的关键词，最多 10 个"],
-  "suggestions": ["投递前的具体动作，2-4 条"]
+  "suggestions": ["投递前的具体动作，2-4 条"],
+  "cvVersion": "本次从 memory/CV.md 读到的版本号"
 }
 ```
 
 字段约束：`rating` ∈ `S|A|B|C`；`severity` ∈ `high|medium|low`；
 `matches` 和 `gaps` 各 2-5 条；数组不允许为空（真的没有缺口就写一条
-`severity: "low"` 的观察）。
+`severity: "low"` 的观察）。`cvVersion` 只能来自本次读到的文件，
+调用方会拿它核对简历是不是最新的，对不上整份分析作废。
 
 ---
 

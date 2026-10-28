@@ -7,6 +7,7 @@ import { EngineStatus } from "@/components/engine-status";
 import { JdAnalyzeForm } from "@/components/jd-analyze-form";
 import { JdAnalysisBrowser } from "@/components/jd-analysis-browser";
 import type { AnalysisRecord } from "@/components/jd-analysis-browser";
+import { cvVersionOf } from "@/lib/nanobot/cv-version";
 
 // Per-user data from the local database: render on every request, never at
 // build time. Demo mode reads no cookies, so without this Next would try to
@@ -21,13 +22,19 @@ export default async function AnalyzePage() {
   const [profile, analyses] = await Promise.all([
     prisma.cvProfile.findUnique({
       where: { userId: user.id },
-      select: { syncedAt: true },
+      select: { syncedAt: true, syncedVersion: true, content: true },
     }),
     prisma.jdAnalysis.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: "desc" },
     }),
   ]);
+
+  const cvVersion = profile?.content.trim() ? cvVersionOf(profile.content) : null;
+  // Analyses are refused until nanobot holds the CV saved on My CV — say so
+  // before the user pastes a JD, not after a wasted call.
+  const memoryOutdated =
+    Boolean(profile?.syncedAt) && profile?.syncedVersion !== cvVersion;
 
   // Dates cross the server/client boundary as strings; the browser component
   // re-hydrates them for display.
@@ -42,6 +49,9 @@ export default async function AnalyzePage() {
     createdAt: a.createdAt.toISOString(),
     editedAt: a.editedAt?.toISOString() ?? null,
     jdText: a.jdText,
+    // Analyses from before CV versions have none, and count as stale: they
+    // may never have read the CV at all.
+    stale: cvVersion !== null && a.cvVersion !== cvVersion,
   }));
 
   return (
@@ -72,6 +82,17 @@ export default async function AnalyzePage() {
               Add one first
             </Link>{" "}
             — analysis needs something to match against.
+          </div>
+        )}
+
+        {memoryOutdated && (
+          <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            nanobot hasn&apos;t confirmed it holds the CV saved on My CV, so new
+            analyses will be refused.{" "}
+            <Link href="/cv" className="font-medium underline">
+              Open My CV
+            </Link>{" "}
+            and click Save CV once.
           </div>
         )}
 

@@ -44,10 +44,17 @@ export function JdAnalysisView({
   analysis,
   analyzedAt,
   model,
+  stale,
+  onReanalyze,
+  reanalyzing,
 }: {
   analysis: JdAnalysis;
   analyzedAt?: Date;
   model?: string;
+  /** Built on a CV other than the one saved now. */
+  stale?: boolean;
+  onReanalyze?: () => void;
+  reanalyzing?: boolean;
 }) {
   return (
     <div className="space-y-5 rounded-lg border bg-white p-6">
@@ -137,17 +144,36 @@ export function JdAnalysisView({
       )}
 
       {(analyzedAt || model) && (
-        <p className="border-t pt-3 text-xs text-gray-400">
-          Analyzed by nanobot{model ? ` (${model})` : ""}
-          {analyzedAt
-            ? ` · ${analyzedAt.toLocaleString("en-US", {
-                month: "short",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}`
-            : ""}
-        </p>
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t pt-3 text-xs text-gray-400">
+          <span>
+            Analyzed by nanobot{model ? ` (${model})` : ""}
+            {analyzedAt
+              ? ` · ${analyzedAt.toLocaleString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}`
+              : ""}
+          </span>
+          {/* Quiet on purpose. An older CV makes the analysis suspect, but
+              re-running is the user's call: many analyses have served their
+              purpose and are not worth paying for again after every CV edit. */}
+          {stale && (
+            <>
+              <span className="text-red-400">· Based on an older CV</span>
+              {onReanalyze && (
+                <button
+                  onClick={onReanalyze}
+                  disabled={reanalyzing}
+                  className="rounded border border-red-200 px-1.5 py-0.5 font-medium text-red-500 hover:bg-red-50 disabled:opacity-50"
+                >
+                  {reanalyzing ? "Re-analyzing…" : "Re-analyze"}
+                </button>
+              )}
+            </>
+          )}
+        </div>
       )}
     </div>
   );

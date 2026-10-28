@@ -4,7 +4,11 @@ import { useState, useMemo, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { JdAnalysisView, RatingBadge } from "./jd-analysis-view";
 import { JdAnalysisEditor } from "./jd-analysis-editor";
-import { updateAnalysisAction, deleteAnalysisAction } from "@/actions/nanobot";
+import {
+  updateAnalysisAction,
+  deleteAnalysisAction,
+  reanalyzeJdAction,
+} from "@/actions/nanobot";
 import { JdAnalysisSchema } from "@/lib/nanobot/schemas";
 import type { JdAnalysis, Rating } from "@/lib/nanobot/schemas";
 
@@ -19,6 +23,8 @@ export interface AnalysisRecord {
   createdAt: string;
   editedAt: string | null;
   jdText: string;
+  /** Built on a CV other than the one saved now. */
+  stale: boolean;
 }
 
 type Sort = "recent" | "score";
@@ -195,10 +201,22 @@ function AnalysisRow({
   const [showJd, setShowJd] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
   const parsed = parseAnalysis(record.analysisJson);
+
+  function reanalyze() {
+    setError(null);
+    setReanalyzing(true);
+    startTransition(async () => {
+      const result = await reanalyzeJdAction(record.id);
+      if (result.ok) router.refresh();
+      else setError(result.error);
+      setReanalyzing(false);
+    });
+  }
 
   function save(next: JdAnalysis) {
     setError(null);
@@ -336,6 +354,9 @@ function AnalysisRow({
               analysis={parsed}
               analyzedAt={new Date(record.createdAt)}
               model={record.model}
+              stale={record.stale}
+              onReanalyze={reanalyze}
+              reanalyzing={reanalyzing}
             />
           )}
         </div>

@@ -13,7 +13,11 @@ import { EMPTY_CV } from "@/lib/nanobot/cv-schema";
 
 const cv = { ...EMPTY_CV, basics: { ...EMPTY_CV.basics, name: "Test Person" } };
 
-function render(syncedAt: string | null, syncError: string | null) {
+function render(
+  syncedAt: string | null,
+  syncError: string | null,
+  memoryUnconfirmed = false
+) {
   const html = renderToStaticMarkup(
     <CvForm
       initial={cv}
@@ -21,6 +25,7 @@ function render(syncedAt: string | null, syncError: string | null) {
       hasUnstructuredCv={false}
       syncedAt={syncedAt}
       syncError={syncError}
+      memoryUnconfirmed={memoryUnconfirmed}
     />
   );
   const button = html.match(/<button[^>]*>Save CV<\/button>/)?.[0] ?? "";
@@ -57,6 +62,18 @@ describe("CV save confirmation", () => {
       "2026-08-13T01:15:04.045Z",
       "Cannot reach nanobot at http://127.0.0.1:8900."
     );
+    expect(saveDisabled).toBe(false);
+  });
+
+  // A CV saved before versions existed is in CV.md, but JD analysis cannot
+  // check it — so the strip must not claim it, and one Save has to be possible
+  // without inventing an edit.
+  it("asks for one save when nanobot never confirmed this version", () => {
+    const { html, saveDisabled, strip } = render("2026-10-28T00:08:00.000Z", null, true);
+    expect(strip[0]).toMatch(/^✗ Not confirmed in nanobot memory/);
+    expect(strip[1]).toMatch(/^✓ Written to the database/);
+    expect(html).toContain("Save CV once so JD analysis can check it");
+    expect(html).not.toContain("npm run engine");
     expect(saveDisabled).toBe(false);
   });
 

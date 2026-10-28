@@ -12,6 +12,7 @@ import {
 } from "@/lib/nanobot/analyze";
 import { JdAnalysisSchema } from "@/lib/nanobot/schemas";
 import type { JdAnalysis } from "@/lib/nanobot/schemas";
+import { cvVersionOf } from "@/lib/nanobot/cv-version";
 import { StructuredCvSchema, renderCvMarkdown } from "@/lib/nanobot/cv-schema";
 import type { StructuredCv } from "@/lib/nanobot/cv-schema";
 import { extractCvText, UnsupportedCvFileError } from "@/lib/cv/extract-text";
@@ -141,12 +142,13 @@ export async function saveStructuredCvAction(
   });
 
   try {
-    const summary = await pushCvToMemory(user.id, markdown);
+    const { summary, cvVersion } = await pushCvToMemory(user.id, markdown);
     await prisma.cvProfile.update({
       where: { userId: user.id },
       data: {
         summaryJson: JSON.stringify(summary),
         syncedAt: new Date(),
+        syncedVersion: cvVersion,
         syncError: null,
       },
     });
@@ -590,8 +592,11 @@ export async function analyzeJdAction(input: {
     if (!owned) return { ok: false, error: "Application not found" };
   }
 
+  const cvVersion = await currentCvVersion(user.id);
+  if (!cvVersion) return analysisFailure(new NoCvError());
+
   try {
-    const analysis = await analyzeJdWithNanobot(user.id, jdText);
+    const analysis = await analyzeJdWithNanobot(user.id, jdText, cvVersion);
 
     const row = await prisma.jdAnalysis.create({
       data: {
@@ -605,6 +610,7 @@ export async function analyzeJdAction(input: {
         verdict: analysis.verdict,
         analysisJson: JSON.stringify(analysis),
         model: NANOBOT_MODEL,
+        cvVersion,
       },
     });
 
@@ -615,19 +621,93 @@ export async function analyzeJdAction(input: {
     }
     return { ok: true, data: { analysisId: row.id } };
   } catch (error) {
-    if (error instanceof NoCvError) {
-      return {
-        ok: false,
-        code: "NO_CV",
-        error: "No CV in nanobot memory yet — add one on the CV page first",
-      };
-    }
+    return analysisFailure(error);
+  }
+}
+
+/**
+ * Run a stored JD again against the CV saved now. Only ever on request: an
+ * analysis that has served its purpose is not worth paying for again after
+ * every CV edit, so nothing re-runs by itself.
+ */
+export async function reanalyzeJdAction(
+  id: string
+): Promise<ActionResult<null>> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, error: "Unauthorized" };
+
+  const row = await prisma.jdAnalysis.findFirst({
+    where: { id, userId: user.id },
+    select: {
+      jdText: true,
+      company: true,
+      role: true,
+      editedAt: true,
+      applicationId: true,
+    },
+  });
+  if (!row) return { ok: false, error: "Not found" };
+
+  const cvVersion = await currentCvVersion(user.id);
+  if (!cvVersion) return analysisFailure(new NoCvError());
+
+  try {
+    const fresh = await analyzeJdWithNanobot(user.id, row.jdText, cvVersion);
+    // A company or role corrected by hand is something the user knows and the
+    // JD does not say. Re-running answers the CV question again; it does not
+    // get to undo that.
+    const analysis = row.editedAt
+      ? { ...fresh, company: row.company, role: row.role }
+      : fresh;
+
+    await prisma.jdAnalysis.update({
+      where: { id },
+      data: {
+        company: analysis.company,
+        role: analysis.role,
+        rating: analysis.rating,
+        matchScore: analysis.matchScore,
+        verdict: analysis.verdict,
+        analysisJson: JSON.stringify(analysis),
+        model: NANOBOT_MODEL,
+        cvVersion,
+        // The analysis is new, so its time is too: the footer shows it and
+        // the list sorts by it.
+        createdAt: new Date(),
+      },
+    });
+
+    revalidatePath("/analyze");
+    revalidatePath("/");
+    if (row.applicationId) revalidatePath(`/applications/${row.applicationId}`);
+    return { ok: true, data: null };
+  } catch (error) {
+    return analysisFailure(error);
+  }
+}
+
+/** Version of the CV saved on My CV, or null when there is none to match. */
+async function currentCvVersion(userId: string): Promise<string | null> {
+  const profile = await prisma.cvProfile.findUnique({
+    where: { userId },
+    select: { content: true },
+  });
+  return profile?.content.trim() ? cvVersionOf(profile.content) : null;
+}
+
+function analysisFailure(error: unknown): ActionResult<never> {
+  if (error instanceof NoCvError) {
     return {
       ok: false,
-      error: describe(error),
-      code: error instanceof NanobotError ? "OFFLINE" : undefined,
+      code: "NO_CV",
+      error: "No CV in nanobot memory yet — add one on the CV page first",
     };
   }
+  return {
+    ok: false,
+    error: describe(error),
+    code: error instanceof NanobotError ? "OFFLINE" : undefined,
+  };
 }
 
 /**

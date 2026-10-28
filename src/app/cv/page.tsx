@@ -6,6 +6,7 @@ import { CvForm } from "@/components/cv-form";
 import { EngineStatus } from "@/components/engine-status";
 import { StructuredCvSchema } from "@/lib/nanobot/cv-schema";
 import type { StructuredCv } from "@/lib/nanobot/cv-schema";
+import { cvVersionOf } from "@/lib/nanobot/cv-version";
 
 // Per-user data from the local database: render on every request, never at
 // build time. Demo mode reads no cookies, so without this Next would try to
@@ -56,6 +57,10 @@ export default async function CvPage() {
           initial={structured}
           syncedAt={profile?.syncedAt?.toISOString() ?? null}
           syncError={profile?.syncError ?? null}
+          memoryUnconfirmed={
+            Boolean(profile?.syncedAt) &&
+            profile?.syncedVersion !== cvVersionOf(profile?.content ?? "")
+          }
           sourceLabel={
             profile?.sourceName
               ? `${profile.sourceName}${profile.sourceAt ? ` · ${profile.sourceAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}`

@@ -231,6 +231,10 @@ model CvProfile {
   summaryJson String?
   syncedAt  DateTime?
   syncError String?
+  // Version of `content` that nanobot confirmed writing to memory/CV.md (see
+  // src/lib/nanobot/cv-version.ts). Null for CVs saved before versions
+  // existed — JD analysis refuses to run until the CV is saved once more.
+  syncedVersion String?
   updatedAt DateTime @updatedAt
 }
 
@@ -248,6 +252,10 @@ model JdAnalysis {
   verdict       String
   analysisJson  String
   model         String
+  // CV version the agent quoted while analysing. Compared with the CV saved
+  // now to flag analyses built on an older CV; null for analyses made before
+  // versions existed, which cannot be trusted to have read the CV at all.
+  cvVersion     String?
   createdAt     DateTime     @default(now())
   // Set when the user has hand-corrected the agent's output, so the UI can
   // show that this is no longer purely what the model produced.

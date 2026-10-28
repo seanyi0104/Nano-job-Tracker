@@ -144,6 +144,16 @@ Fail    = REJECTED
 这是刻意的：如果每次都把 CV 拼进 prompt，"长期记忆"就只是个装饰词，整条链路
 退化成一次无状态的 LLM 调用。让 Agent 自己去读记忆，Memory 才是真的在工作。
 
+让 Agent 自己回忆，就得能证明它真的回忆了。所以做了两件事：
+
+- **每次调用 nanobot 都开一个新会话**。对话里没有旧简历可抄，只能去读 `CV.md`。
+- **简历带版本号**。Save CV 时，`CV.md` 顶部会写入一个版本号（简历内容的哈希）。分析结果
+  必须带回本次从文件里读到的版本号，和当前简历对不上就报错、不入库。简历改过之后，旧分析
+  底部会标「Based on an older CV」，要不要点 Re-analyze 重跑由你决定。
+
+这两条是踩坑踩出来的。最初每个用户共用一个分析会话，Agent 第一次读完 `CV.md` 之后，就一直
+拿对话记录里那份旧简历打分。中间简历改了好几次它都没发现，每次输出看上去又都正常。
+
 数据库里的 `CvProfile` 不参与 JD 分析，但它是**邮件分类画像的来源**：
 `src/lib/cv/profile.ts` 从这里抽 5 行（求职意向、所在地、学历、雇主、技能）。
 Save CV 先写数据库、再推给 nanobot，所以不开 nanobot 时，手填的简历照样能让
@@ -286,10 +296,14 @@ npm run dev
 | 指令 | 输入 | 输出 |
 |------|------|------|
 | `[NJT:CV_PARSE]` | 简历原始文本（PDF/Word 抽出，排版可能已乱） | 结构化 CV 字段。**只解析不写记忆**——用户先在表单里核对 |
-| `[NJT:CV_UPDATE]` | 简历全文 | `{ok, summary:{headline, years, skills[], highlights[]}}`，同时写入 `memory/CV.md` |
-| `[NJT:ANALYZE]` | JD 原文 | `{ok, company, role, rating, matchScore, verdict, matches[], gaps[], keywords[], suggestions[]}` |
+| `[NJT:CV_UPDATE]` | 版本号行 + 简历全文 | `{ok, summary:{headline, years, skills[], highlights[]}, cvVersion}`，同时写入 `memory/CV.md` |
+| `[NJT:ANALYZE]` | JD 原文 | `{ok, company, role, rating, matchScore, verdict, matches[], gaps[], keywords[], suggestions[], cvVersion}` |
 
 记忆为空时 `[NJT:ANALYZE]` 返回 `{"ok": false, "error": "NO_CV"}`，前端据此把用户引导到 `/cv`。
+
+两条指令里的 `cvVersion`，都是 Agent 从 `memory/CV.md` 的版本号行读到的值（版本号的生成和读取在
+`src/lib/nanobot/cv-version.ts`）。前端拿它和当前简历比对，对不上就拒收：写入时说明没写成功，
+分析时说明没用最新简历。版本号只留在前端核对，从不随 JD 发出去，否则 Agent 不读文件也能照抄。
 
 Agent 的输出比裸 completion 更啰嗦，所以 `src/lib/nanobot/analyze.ts` 会先剥掉代码围栏
 和寒暄，再取第一个 `{` 到最后一个 `}`，然后过一遍 zod。校验失败就报错，不会把半截
@@ -299,11 +313,16 @@ JSON 写进库。
 
 | 用途 | session_id |
 |------|-----------|
-| 简历写入 | `njt:cv:<userId>` |
-| JD 分析 | `njt:analyze:<userId>` |
+| 简历解析、写入 | `njt:cv:<userId>:<随机 id>` |
+| JD 分析 | `njt:analyze:<userId>:<随机 id>` |
 
-两个会话的短期上下文隔离，但长期记忆（`memory/`）是工作区级的——所以 cv 会话写进去的
-简历，analyze 会话能读到。这正是拆成两个会话还能协同的原因。
+**每次调用一个新会话**。唯一的例外是简历解析的纠错重试：它和第一次请求共用一个会话，因为它要
+让 Agent 看到自己上一次答错了什么。短期上下文用完即弃，长期记忆（`memory/`）是工作区级的，
+所以写简历的会话写进去的东西，分析会话照样读得到。
+
+为什么不让同一个用户的请求共用会话：nanobot 会把整段会话历史回放进每次请求。共用时，
+Agent 会直接引用历史里读过的旧简历，不再重新读文件，长期记忆就被短期上下文挡住了；
+历史还会越积越长，越来越贵。nanobot 的 `sessions/` 目录里每次调用会留一个文件，可以随时删。
 
 ---
 
@@ -344,6 +363,7 @@ NANOBOT_TIMEOUT_MS="180000" # Agent 要读文件再推理，比裸调用慢
 | `npm run dev` 报 `EPERM … query_engine-windows.dll.node` | 已经有一个 dev server 在跑，占着 Prisma 引擎文件。网页能打开就不用再开；要重启先在原来的终端按 Ctrl+C |
 | 页面报 `Unexpected token '<'` 或显示 `(stale)` | 改了 `prisma/schema.prisma`、删了文件或动了 `node_modules` 之后没重启 dev server。重启即可 |
 | JD 分析报 `OFFLINE` | nanobot 引擎没开，先 `npm run engine`，右上角灯变绿再试 |
+| JD 分析报 `did not answer from your current CV` | nanobot 记忆里的简历不是当前这份，或者是加版本号之前存的（从旧版本升级都会遇到一次）。去 My CV 点一次 Save CV，再分析。改过 `SKILL.md` 的话，先 `npm run install-skill` |
 
 ## 你的数据去了哪里
 

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { nanobotChat, NanobotError } from "./client";
 import {
   AgentFailureSchema,
@@ -8,6 +9,7 @@ import type { CvSummary, JdAnalysis } from "./schemas";
 import { StructuredCvSchema, isCvEmpty } from "./cv-schema";
 import type { StructuredCv } from "./cv-schema";
 import { coerceAgentCv } from "./cv-coerce";
+import { cvVersionOf, readQuotedVersion, stampCv } from "./cv-version";
 
 /** Raised when the agent explicitly reports it has no CV in memory. */
 export class NoCvError extends Error {
@@ -17,8 +19,36 @@ export class NoCvError extends Error {
   }
 }
 
-const cvSession = (userId: string) => `njt:cv:${userId}`;
-const analyzeSession = (userId: string) => `njt:analyze:${userId}`;
+/**
+ * The agent answered, but not from the CV saved in this app: the version it
+ * quoted from memory/CV.md is not the current one. A stale analysis reads
+ * exactly like a good one, so it is refused rather than stored as one.
+ */
+export class StaleCvError extends Error {
+  constructor(
+    readonly quoted: string | null,
+    readonly expected: string
+  ) {
+    super(
+      `nanobot did not answer from your current CV (it quoted version ${quoted ?? "none"}, ` +
+        `My CV holds ${expected}), so nothing was saved. Click Save CV on My CV, then try again.`
+    );
+    this.name = "StaleCvError";
+  }
+}
+
+/**
+ * Every request gets a session of its own.
+ *
+ * nanobot replays a session's history into each new request. With one
+ * long-lived session per user and purpose, the agent read memory/CV.md for the
+ * first analysis and then answered every later one from the copy already in
+ * its history — for weeks, through every CV save, with nothing to show for it.
+ * The CV lives in workspace memory, which every session sees, so a clean
+ * session loses nothing and leaves the agent no choice but to read the file.
+ */
+const freshSession = (purpose: "cv" | "analyze", userId: string) =>
+  `njt:${purpose}:${userId}:${randomUUID()}`;
 
 /**
  * Naming the skill explicitly is cheap insurance: the agent only sees skill
@@ -30,17 +60,27 @@ const USE_SKILL = "Load and follow the `job-analysis` skill.";
  * Push the CV into nanobot's long-term memory (workspace/memory/CV.md) and
  * get back a structured summary. nanobot owns the CV; the local DB row is
  * only a mirror for the editor UI.
+ *
+ * The agent has to quote the version back from the file it wrote, so an "ok"
+ * with no write behind it is caught at the save, not at the next analysis.
  */
 export async function pushCvToMemory(
   userId: string,
   cvText: string
-): Promise<CvSummary> {
+): Promise<{ summary: CvSummary; cvVersion: string }> {
+  const cvVersion = cvVersionOf(cvText);
   const reply = await nanobotChat(
-    `${USE_SKILL}\n\n[NJT:CV_UPDATE]\n\n${cvText}`,
-    cvSession(userId)
+    `${USE_SKILL}\n\n[NJT:CV_UPDATE]\n\n${stampCv(cvText)}`,
+    freshSession("cv", userId)
   );
   const parsed = parseAgentJson(reply, CvUpdateResultSchema);
-  return parsed.summary;
+  if (readQuotedVersion(parsed.cvVersion) !== cvVersion) {
+    throw new NanobotError(
+      `nanobot did not confirm writing this CV (expected version ${cvVersion}, ` +
+        `got ${parsed.cvVersion ?? "none"}). Save CV again.`
+    );
+  }
+  return { summary: parsed.summary, cvVersion };
 }
 
 /**
@@ -52,8 +92,11 @@ export async function parseCvText(
   userId: string,
   cvText: string
 ): Promise<StructuredCv> {
+  // Both attempts share one session: the retry tells the agent its previous
+  // reply was unusable, which only means something if it can see that reply.
+  const session = freshSession("cv", userId);
   const attempt = async (instruction: string): Promise<StructuredCv> => {
-    const reply = await nanobotChat(instruction, cvSession(userId));
+    const reply = await nanobotChat(instruction, session);
     const raw = extractJsonObject(reply);
     if (!raw) {
       throw new NanobotError(`No JSON in CV parse reply: ${reply.slice(0, 200)}`);
@@ -101,16 +144,24 @@ export class CvParseError extends Error {
  * remembers. The CV is deliberately NOT passed in — recalling it is the
  * agent's job, and that is what makes this a memory-backed pipeline rather
  * than a stateless prompt.
+ *
+ * `cvVersion` is the version of the CV saved in this app. It stays on this
+ * side and is never sent: the agent can only produce it by reading
+ * memory/CV.md, which is exactly what the check is there to prove.
  */
 export async function analyzeJdWithNanobot(
   userId: string,
-  jdText: string
+  jdText: string,
+  cvVersion: string
 ): Promise<JdAnalysis> {
   const reply = await nanobotChat(
     `${USE_SKILL}\n\n[NJT:ANALYZE]\n\n${jdText}`,
-    analyzeSession(userId)
+    freshSession("analyze", userId)
   );
-  return parseAgentJson(reply, JdAnalysisSchema);
+  const analysis = parseAgentJson(reply, JdAnalysisSchema);
+  const quoted = readQuotedVersion(analysis.cvVersion);
+  if (quoted !== cvVersion) throw new StaleCvError(quoted, cvVersion);
+  return { ...analysis, cvVersion };
 }
 
 /**

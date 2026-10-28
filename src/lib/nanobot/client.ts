@@ -23,9 +23,10 @@ export class NanobotError extends Error {
 /**
  * Send one user message to a nanobot session and return the assistant text.
  *
- * `sessionId` keeps conversations isolated per user and per purpose. Long-term
- * memory (the CV) is workspace-level, so it is shared across sessions — that is
- * exactly what lets the analyze session recall a CV the cv session wrote.
+ * `sessionId` keeps conversations isolated; analyze.ts gives every call a
+ * fresh one. Long-term memory (the CV) is workspace-level, so it is shared
+ * across sessions — that is exactly what lets an analysis recall a CV that
+ * another session wrote.
  */
 export async function nanobotChat(
   message: string,

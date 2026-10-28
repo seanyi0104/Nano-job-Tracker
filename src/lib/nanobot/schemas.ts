@@ -20,6 +20,8 @@ export const CvUpdateResultSchema = z.object({
   ok: z.literal(true),
   summary: CvSummarySchema,
   storedAt: z.string().optional(),
+  // Read back from memory/CV.md after the write; analyze.ts checks it.
+  cvVersion: z.string().nullish(),
 });
 
 /** `[NJT:ANALYZE]` response from the job-analysis skill. */
@@ -45,6 +47,9 @@ export const JdAnalysisSchema = z.object({
   ),
   keywords: z.array(z.string()),
   suggestions: z.array(z.string()),
+  // Quoted from memory/CV.md: which CV the analysis was built on. Absent from
+  // analyses stored before CV versions existed.
+  cvVersion: z.string().nullish(),
 });
 
 export type JdAnalysis = z.infer<typeof JdAnalysisSchema>;

@@ -29,6 +29,12 @@ interface CvFormProps {
    * memory, so the form is clean yet not settled.
    */
   syncError: string | null;
+  /**
+   * True when nanobot never confirmed holding this CV — typically one saved
+   * before CV versions existed. JD analysis refuses to run against it, so it
+   * is unsettled too and Save must work without an edit.
+   */
+  memoryUnconfirmed: boolean;
 }
 
 /**
@@ -43,6 +49,7 @@ export function CvForm({
   hasUnstructuredCv,
   syncedAt,
   syncError,
+  memoryUnconfirmed,
 }: CvFormProps) {
   const [cv, setCv] = useState<StructuredCv>(initial ?? EMPTY_CV);
   const [dirty, setDirty] = useState(false);
@@ -64,8 +71,9 @@ export function CvForm({
   // neither consumer holds what is on screen.
   const clean = !dirty && !isPending;
   const inDatabase = clean && Boolean(syncedAt || syncError);
-  const inMemory = clean && Boolean(syncedAt) && !syncError;
-  const memoryBehind = clean && Boolean(syncError);
+  const inMemory =
+    clean && Boolean(syncedAt) && !syncError && !memoryUnconfirmed;
+  const memoryBehind = clean && (Boolean(syncError) || memoryUnconfirmed);
 
   function update(next: StructuredCv) {
     setCv(next);
@@ -346,11 +354,17 @@ export function CvForm({
           {dirty && !isPending && (
             <span className="text-xs text-amber-600">Unsaved changes</span>
           )}
-          {memoryBehind && (
+          {memoryBehind && syncError && (
             <span className="text-xs text-amber-600">
               nanobot has the previous version — start it with{" "}
               <code className="rounded bg-amber-50 px-1">npm run engine</code>,
               then Save CV again
+            </span>
+          )}
+          {memoryBehind && !syncError && (
+            <span className="text-xs text-amber-600">
+              nanobot hasn&apos;t confirmed this version — Save CV once so JD
+              analysis can check it
             </span>
           )}
           {inMemory && syncedAt && (
@@ -369,7 +383,7 @@ export function CvForm({
             <span className={inMemory ? "text-green-700" : ""}>
               {inMemory ? "✓" : memoryBehind ? "✗" : "·"}
             </span>{" "}
-            {memoryBehind ? "Not written" : "Written"} to nanobot memory (<code className="rounded bg-gray-100 px-1">CV.md</code>) — used by JD analysis
+            {memoryBehind ? (syncError ? "Not written to" : "Not confirmed in") : "Written to"} nanobot memory (<code className="rounded bg-gray-100 px-1">CV.md</code>) — used by JD analysis
           </li>
           <li>
             <span className={inDatabase ? "text-green-700" : ""}>
